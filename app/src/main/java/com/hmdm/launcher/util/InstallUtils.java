@@ -378,6 +378,12 @@ public class InstallUtils {
             return;
         }
 
+        if (file.getName().endsWith(".apks")) {
+            List<File> files = ApksUtils.extract(context, file);
+            ApksUtils.install(context, files, packageName, errorHandler);
+            return;
+        }
+
         if (file.getName().endsWith(".xapk")) {
             List<File> files = XapkUtils.extract(context, file);
             XapkUtils.install(context, files, packageName, errorHandler);
@@ -438,6 +444,10 @@ public class InstallUtils {
     }
 
     public static void requestInstallApplication(Context context, File file, InstallErrorHandler errorHandler) {
+        if (file.getName().endsWith(".apks")) {
+            ApksUtils.install(context, ApksUtils.extract(context, file), null, errorHandler);
+            return;
+        }
         if (file.getName().endsWith(".xapk")) {
             XapkUtils.install(context, XapkUtils.extract(context, file), null, errorHandler);
             return;
@@ -546,8 +556,8 @@ public class InstallUtils {
 
     public static void deleteTempApk(File file) {
         try {
-            if (file.getName().endsWith(".xapk")) {
-                // For XAPK, we need to remove the directory with the same name
+            if (file.getName().endsWith(".xapk") || file.getName().endsWith(".apks")) {
+                // For XAPK and APKS, we need to remove the directory with the same name
                 String path = file.getAbsolutePath();
                 File directory = new File(path.substring(0, path.length() - 5));
                 if (directory.exists()) {
