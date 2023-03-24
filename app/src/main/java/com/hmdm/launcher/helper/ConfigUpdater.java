@@ -33,6 +33,7 @@ import com.hmdm.launcher.task.ConfirmPasswordResetTask;
 import com.hmdm.launcher.task.ConfirmRebootTask;
 import com.hmdm.launcher.task.GetRemoteLogConfigTask;
 import com.hmdm.launcher.task.GetServerConfigTask;
+import com.hmdm.launcher.ui.MainActivity;
 import com.hmdm.launcher.util.DeviceInfoProvider;
 import com.hmdm.launcher.util.InstallUtils;
 import com.hmdm.launcher.util.PushNotificationMqttWrapper;
@@ -474,7 +475,8 @@ public class ConfigUpdater {
                         RemoteLogger.log(context, Const.LOG_DEBUG, "Removing file: " + remoteFile.getPath());
                         File file = new File(Environment.getExternalStorageDirectory(), remoteFile.getPath());
                         try {
-                            file.delete();
+                            if(shouldDeleteSourceApk(file))
+                                file.delete();
                             RemoteFileTable.deleteByPath(DatabaseHelper.instance(context).getWritableDatabase(), remoteFile.getPath());
                         } catch (Exception e) {
                             RemoteLogger.log(context, Const.LOG_WARN, "Failed to remove file: " +
@@ -982,6 +984,11 @@ public class ConfigUpdater {
         }
     }
 
+    private boolean shouldDeleteSourceApk(File file)
+    {
+        return !file.getAbsolutePath().contains("/usbdisk") && !file.getAbsolutePath().contains("/sdcard");
+    }
+
     // This function is called from a background thread
     private void installApplication( File file, final String packageName, final String version ) {
         if (packageName.equals(context.getPackageName()) &&
@@ -998,7 +1005,7 @@ public class ConfigUpdater {
                 public void onInstallError() {
                     Log.i(Const.LOG_TAG, "installApplication(): error installing app " + packageName);
                     pendingInstallations.remove(packageName);
-                    if (file.exists()) {
+                    if (file.exists() && shouldDeleteSourceApk(file)) {
                         file.delete();
                     }
                     if (uiNotifier != null) {
@@ -1029,7 +1036,7 @@ public class ConfigUpdater {
                 @Override
                 public void onInstallError() {
                     pendingInstallations.remove(packageName);
-                    if (file.exists()) {
+                    if (file.exists() && shouldDeleteSourceApk(file)) {
                         file.delete();
                     }
                     handler.post(new Runnable() {
