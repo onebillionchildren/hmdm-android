@@ -1035,7 +1035,7 @@ public class ConfigUpdater {
             });
         } else {
             RemoteLogger.log(context, Const.LOG_INFO, "Asking user to install app " + packageName + versionData);
-            InstallUtils.requestInstallApplication(context, file, new InstallUtils.InstallErrorHandler() {
+            InstallUtils.requestInstallApplication(context, file, packageName, new InstallUtils.InstallErrorHandler() {
                 @Override
                 public void onInstallError() {
                     pendingInstallations.remove(packageName);

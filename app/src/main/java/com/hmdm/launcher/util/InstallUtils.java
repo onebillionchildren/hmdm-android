@@ -171,7 +171,7 @@ public class InstallUtils {
         if (!application.getPkg().equals(context.getPackageName())) {
             return false;
         }
-        return BuildConfig.FLAVOR.equals("opensource") && application.getUrl().endsWith("master.apk");
+        return  false;//BuildConfig.FLAVOR.equals("opensource") && application.getUrl().endsWith("master.apk");
     }
 
     private static boolean areVersionsEqual(String v1, String v2) {
@@ -379,8 +379,7 @@ public class InstallUtils {
         }
 
         if (file.getName().endsWith(".apks")) {
-            List<File> files = ApksUtils.extract(context, file);
-            ApksUtils.install(context, files, packageName, errorHandler);
+            ApksUtils.extractAndInstall(context, file, packageName, errorHandler);
             return;
         }
 
@@ -443,13 +442,13 @@ public class InstallUtils {
         }
     }
 
-    public static void requestInstallApplication(Context context, File file, InstallErrorHandler errorHandler) {
+    public static void requestInstallApplication(Context context, File file, String packageName, InstallErrorHandler errorHandler) {
         if (file.getName().endsWith(".apks")) {
-            ApksUtils.install(context, ApksUtils.extract(context, file), null, errorHandler);
+            ApksUtils.extractAndInstall(context, file, packageName, errorHandler);
             return;
         }
         if (file.getName().endsWith(".xapk")) {
-            XapkUtils.install(context, XapkUtils.extract(context, file), null, errorHandler);
+            XapkUtils.install(context, XapkUtils.extract(context, file), packageName, errorHandler);
             return;
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

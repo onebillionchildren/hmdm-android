@@ -15,7 +15,9 @@ import org.apache.commons.io.monitor.FileEntry;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -29,6 +31,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
 
 public class ApksUtils
@@ -67,30 +70,27 @@ public class ApksUtils
         }
     }
 
-    public static List<File> extract(Context context, File apks) {
+    public static boolean extractAndInstall(Context context, File apks, String packageName, InstallUtils.InstallErrorHandler errorHandler) {
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            if (errorHandler != null) {
+                errorHandler.onInstallError();
+            }
+            return false;
+        }
+
         // Here we presume that apks file name ends with .apks
         try {
-            String extractDir = apks.getName().substring(0, apks.getName().length() - 5);
-            File extractDirFile = new File(context.getExternalFilesDir(null), extractDir);
-            if (extractDirFile.isDirectory()) {
-                FileUtils.deleteDirectory(extractDirFile);
-            } else if (extractDirFile.exists()) {
-                extractDirFile.delete();
-            }
-            extractDirFile.mkdirs();
-
-            List<ZipEntry> selectedFiles = new ArrayList<>();
+            List<ZipEntry> selectedEntries = new ArrayList<>();
 
             List<ZipEntry> abiFiles = new ArrayList<>();
             List<ZipEntry> densityFiles = new ArrayList<>();
             List<ZipEntry> localeFiles = new ArrayList<>();
 
-            List<File> result = new LinkedList<File>();
-
             ZipFile zipFile = new ZipFile(apks);
             Enumeration<? extends ZipEntry> entries = zipFile.entries();
 
-            while(entries.hasMoreElements()) {
+            while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
                 if (entry.isDirectory())
                     continue;
@@ -98,78 +98,53 @@ public class ApksUtils
                 if (entry.getName().endsWith(".apk")) {
                     // collect all splits (assets files)
                     if (entry.getName().contains("asset-slices/")) {
-                        selectedFiles.add(entry);
+                        selectedEntries.add(entry);
                     }
 
                     if (entry.getName().contains("splits/")) {
                         //add base-master
-                        if(entry.getName().endsWith("base-master.apk"))
-                            selectedFiles.add(entry);
+                        if (entry.getName().endsWith("base-master.apk"))
+                            selectedEntries.add(entry);
 
-                        if(entryInSet(entry, ABIS))
+                        if (entryInSet(entry, ABIS))
                             abiFiles.add(entry);
-                        else if(entryInSet(entry, DENSITY_TO_VALUE.keySet()))
+                        else if (entryInSet(entry, DENSITY_TO_VALUE.keySet()))
                             densityFiles.add(entry);
-                        else if(entryInSet(entry, LOCALES))
+                        else if (entryInSet(entry, LOCALES))
                             localeFiles.add(entry);
 
                     }
                 }
             }
 
-            addPreferredEntriesOrAll(selectedFiles, abiFiles, getPreferredAbis());
+            addPreferredEntriesOrAll(selectedEntries, abiFiles, getPreferredAbis());
 
             String density = getPreferredDensity(context);
             HashSet<String> densitySet = new HashSet<>();
-            if(density != null)
+            if (density != null)
                 densitySet.add(density);
-            addPreferredEntriesOrAll(selectedFiles, densityFiles, densitySet);
+            addPreferredEntriesOrAll(selectedEntries, densityFiles, densitySet);
 
-            addPreferredEntriesOrAll(selectedFiles, localeFiles, getPreferredLanguages(context));
+            addPreferredEntriesOrAll(selectedEntries, localeFiles, getPreferredLanguages(context));
 
-
-            for(ZipEntry entry : selectedFiles) {
-                InputStream inputStream = zipFile.getInputStream(entry);
-                File resultFile = new File(extractDirFile, entry.getName());
-                resultFile.mkdirs();
-                if(resultFile.exists())
-                    resultFile.delete();
-                FileOutputStream outputStream = new FileOutputStream(resultFile);
-                IOUtils.copy(inputStream, outputStream);
-                inputStream.close();
-                outputStream.close();
-                result.add(resultFile);
+            if (selectedEntries == null || selectedEntries.size() == 0) {
+                RemoteLogger.log(context, Const.LOG_WARN, "Failed to unpack APKS for " + packageName + " - ignoring installation");
+                if (errorHandler != null) {
+                    errorHandler.onInstallError();
+                }
+                return false;
             }
-            zipFile.close();
-            return result;
 
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    public static void install(Context context, List<File> files, String packageName, InstallUtils.InstallErrorHandler errorHandler) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-            return;
-        }
-        if (files == null) {
-            RemoteLogger.log(context, Const.LOG_WARN, "Failed to unpack APKS for " + packageName + " - ignoring installation");
-            if (errorHandler != null) {
-                errorHandler.onInstallError();
+            long totalSize = 0;
+            for (ZipEntry entry : selectedEntries) {
+                totalSize += entry.getSize();
             }
-            return;
-        }
-        long totalSize = 0;
-        for (File file : files) {
-            totalSize += file.length();
-        }
 
-        try {
             Log.i(Const.LOG_TAG, "Installing APKS " + packageName);
             PackageInstaller packageInstaller = context.getPackageManager().getPackageInstaller();
             PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(
                     PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+
             if (packageName != null) {
                 params.setAppPackageName(packageName);
             }
@@ -178,29 +153,43 @@ public class ApksUtils
 
             PackageInstaller.Session session = packageInstaller.openSession(sessionId);
 
-            for (File file : files) {
-                try(FileInputStream in = new FileInputStream(file);
-                    OutputStream out = session.openWrite(file.getName(), 0, file.length())) {
+            for (int i=0; i<selectedEntries.size(); i++) {
+                ZipEntry entry = selectedEntries.get(i);
+                try (InputStream in = zipFile.getInputStream(selectedEntries.get(i));
+                    OutputStream out = session.openWrite(String.format("split-%d.apk", i), 0, entry.getSize())) {
                     IOUtils.copy(in, out);
                     session.fsync(out);
                 }
             }
+            zipFile.close();
 
             session.commit(InstallUtils.createIntentSender(context, sessionId, packageName));
             session.close();
 
-            for(File file : files)
-                file.delete();
-
             Log.i(Const.LOG_TAG, "Installation session committed");
 
-        } catch (Exception e) {
-            if (errorHandler != null) {
-                errorHandler.onInstallError();
-            }
-        }
-    }
 
+            return true;
+
+        }
+        catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+        catch (ZipException e) {
+            e.printStackTrace();
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+
+
+        if (errorHandler != null) {
+            errorHandler.onInstallError();
+        }
+
+        return false;
+    }
+    
     private static void addPreferredEntriesOrAll(List<ZipEntry> selectedEntries, List<ZipEntry> sourceEntries, Set<String> preferred) {
         boolean found = false;
         if(preferred != null && preferred.size() > 0) {
