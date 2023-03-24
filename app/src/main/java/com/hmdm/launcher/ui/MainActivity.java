@@ -2553,4 +2553,10 @@ public class MainActivity
                 .replace("CUSTOM3", config.getCustom3() != null ? config.getCustom3() : "");
         FileUtils.writeStringToFile(dstFile, content);
     }
+
+    public void setInterruptResume()
+    {
+        interruptResumeFlow = true;
+    }
+
 }

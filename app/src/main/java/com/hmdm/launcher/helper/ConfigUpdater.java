@@ -885,6 +885,9 @@ public class ConfigUpdater {
                                         (flags & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == 0) {
                                     confirmationIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                                     try {
+                                        if(context instanceof MainActivity)
+                                            ((MainActivity)context).setInterruptResume();
+
                                         context.startActivity(confirmationIntent);
                                     } catch (Exception e) {
                                     }
