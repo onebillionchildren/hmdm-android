@@ -922,6 +922,7 @@ public class ConfigUpdater {
                                         uiNotifier.onAppInstallComplete(packageName);
                                     }
                                 }
+                                loadAndInstallApplications();
                                 break;
                             default:
                                 // Installation failure
@@ -940,10 +941,9 @@ public class ConfigUpdater {
                                         InstallUtils.deleteTempApk(file);
                                     }
                                 }
-
+                                loadAndInstallApplications();
                                 break;
                         }
-                        loadAndInstallApplications();
                     }
                 }
             };
